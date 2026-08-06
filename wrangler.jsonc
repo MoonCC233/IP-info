@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ip-info",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1
+  }
+}
