@@ -3,6 +3,27 @@ import { getWeather } from "./weather.js";
 
 const WEEK_MAP = ["日", "一", "二", "三", "四", "五", "六"];
 
+async function ipGeoLookup(ip) {
+  try {
+    const res = await fetch(`http://ip-api.com/json/${ip}?lang=zh-CN&fields=status,country,regionName,city,lat,lon`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    const data = await res.json();
+    if (data.status === "success") {
+      return {
+        country: data.country || "",
+        region: data.regionName || "",
+        city: data.city || "",
+        latitude: data.lat,
+        longitude: data.lon,
+      };
+    }
+  } catch (_e) {
+    // 网络超时或请求失败，忽略
+  }
+  return null;
+}
+
 export async function generateInfo(request) {
   const ip =
     request.headers.get("cf-connecting-ip") ||
@@ -14,9 +35,23 @@ export async function generateInfo(request) {
   const { os, browser } = parseUA(ua);
 
   const cf = request.cf || {};
-  const country = cf.country || "";
-  const region = cf.region || cf.regionCode || "";
-  const city = cf.city || "";
+  let country = cf.country || "";
+  let region = cf.region || cf.regionCode || "";
+  let city = cf.city || "";
+  let latitude = cf.latitude;
+  let longitude = cf.longitude;
+
+  // Cloudflare cf 数据不完整时，回退到 ip-api.com 查询
+  if (!city || !region) {
+    const geo = await ipGeoLookup(ip);
+    if (geo) {
+      if (!city) city = geo.city;
+      if (!region) region = geo.region;
+      if (!country) country = geo.country;
+      if (latitude == null) latitude = geo.latitude;
+      if (longitude == null) longitude = geo.longitude;
+    }
+  }
 
   const locationParts = [country, region, city].filter(Boolean);
   const location = locationParts.length > 0 ? locationParts.join("-") : "未知地区";
@@ -25,7 +60,7 @@ export async function generateInfo(request) {
   const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
   const weekStr = `星期${WEEK_MAP[now.getDay()]}`;
 
-  const weather = await getWeather(cf.latitude, cf.longitude);
+  const weather = await getWeather(latitude, longitude);
 
   return {
     ip,
@@ -138,6 +173,7 @@ export function generateHTML(info, svg) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <title>IP 签名档 - 您的网络信息</title>
   <style>
     @font-face {
