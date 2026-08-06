@@ -77,13 +77,13 @@ export function generateSVG(info, queryText = "") {
   const textLines = [];
 
   textLines.push({ text: `欢迎您来自${info.location}的朋友`, y: 35 });
-  textLines.push({ text: `今天是${info.dateStr} ${info.weekStr}`, y: 72 });
-
-  let ipLine = `您的IP是:${info.ip}`;
+  let dateLine = `今天是${info.dateStr} ${info.weekStr}`;
   if (info.weather) {
-    ipLine += `  ${info.weather.text}`;
+    dateLine += `  ${info.weather.text}`;
   }
-  textLines.push({ text: ipLine, y: 110 });
+  textLines.push({ text: dateLine, y: 72 });
+
+  textLines.push({ text: `您的IP是:${info.ip}`, y: 110 });
 
   textLines.push({ text: `您使用的是${info.os}操作系统`, y: 148 });
   textLines.push({ text: `您使用的是${info.browser}`, y: 186 });
