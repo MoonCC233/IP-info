@@ -35,23 +35,14 @@ export async function generateInfo(request) {
   const { os, browser } = parseUA(ua);
 
   const cf = request.cf || {};
-  let country = cf.country || "";
-  let region = cf.region || cf.regionCode || "";
-  let city = cf.city || "";
-  let latitude = cf.latitude;
-  let longitude = cf.longitude;
 
-  // Cloudflare cf 数据不完整时，回退到 ip-api.com 查询
-  if (!city || !region) {
-    const geo = await ipGeoLookup(ip);
-    if (geo) {
-      if (!city) city = geo.city;
-      if (!region) region = geo.region;
-      if (!country) country = geo.country;
-      if (latitude == null) latitude = geo.latitude;
-      if (longitude == null) longitude = geo.longitude;
-    }
-  }
+  // 优先使用 ip-api.com 查询地理位置（中文返回，更准确）
+  const geo = await ipGeoLookup(ip);
+  let country = geo?.country || cf.country || "";
+  let region = geo?.region || cf.region || cf.regionCode || "";
+  let city = geo?.city || cf.city || "";
+  let latitude = geo?.latitude ?? cf.latitude;
+  let longitude = geo?.longitude ?? cf.longitude;
 
   const locationParts = [country, region, city].filter(Boolean);
   const location = locationParts.length > 0 ? locationParts.join("-") : "未知地区";
