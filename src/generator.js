@@ -93,38 +93,22 @@ export function generateSVG(info, queryText = "") {
   }
 
   const TEXT_X = 20;
-
-  const textEls = textLines.map((line) => {
-    const fontSize = line.small ? 15 : 17;
-    const fill = line.small ? "#6b4a35" : "#5a3825";
-    return `<text x="${TEXT_X}" y="${line.y}" font-family="msyh, Microsoft YaHei, sans-serif" font-size="${fontSize}" font-weight="bold" fill="${fill}">${escapeXml(line.text)}</text>`;
-  });
-
-  function measureTextWidth(text, fontSize) {
-    let width = 0;
-    for (const ch of text) {
-      if (/[\u4e00-\u9fff]/.test(ch)) {
-        width += fontSize;
-      } else if (/\s/.test(ch)) {
-        width += fontSize * 0.3;
-      } else {
-        width += fontSize * 0.6;
-      }
-    }
-    return width;
-  }
-
-  const underlineEls = textLines.map((line) => {
-    const fontSize = line.small ? 15 : 17;
-    const textWidth = measureTextWidth(line.text, fontSize);
-    const ulY = line.y + 4;
-    return `<line x1="${TEXT_X}" y1="${ulY}" x2="${TEXT_X + textWidth}" y2="${ulY}" stroke="#5a3825" stroke-width="1.5"/>`;
-  });
+  const FONT_SIZE = 17;
+  const FONT_SIZE_SMALL = 15;
 
   const mascotX = 300;
   const mascotY = -4;
   const mascotW = 230;
   const mascotH = 260;
+
+  const textEls = textLines.map((line) => {
+    const fs = line.small ? FONT_SIZE_SMALL : FONT_SIZE;
+    const color = line.small ? "#6b4a35" : "#5a3825";
+    const divY = line.y - fs;
+    return `<foreignObject x="${TEXT_X}" y="${divY}" width="${W - TEXT_X}" height="${fs + 12}">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;font-family:msyh,'Microsoft YaHei',sans-serif;font-size:${fs}px;font-weight:bold;color:${color};text-decoration:underline;text-underline-offset:4px;white-space:nowrap">${escapeXml(line.text)}</div>
+    </foreignObject>`;
+  });
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>
@@ -142,10 +126,7 @@ export function generateSVG(info, queryText = "") {
   <g clip-path="url(#cardClip)">
     <image href="/kbn.png" x="${mascotX}" y="${mascotY}" width="${mascotW}" height="${mascotH}" preserveAspectRatio="xMidYMax meet"/>
   </g>
-  <g>
-    ${underlineEls.join("\n    ")}
-    ${textEls.join("\n    ")}
-  </g>
+  ${textEls.join("\n    ")}
 </svg>`;
 
   return svg;
