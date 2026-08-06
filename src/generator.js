@@ -29,7 +29,6 @@ export async function generateInfo(request) {
 
   return {
     ip,
-    maskedIp: maskIp(ip),
     os,
     browser,
     location,
@@ -43,63 +42,63 @@ export async function generateInfo(request) {
   };
 }
 
-function maskIp(ip) {
-  if (!ip) return "";
-  const parts = ip.split(".");
-  if (parts.length === 4) {
-    return `${parts[0]}.${parts[1]}.*.${parts[3]}`;
-  }
-  if (ip.includes(":")) {
-    const parts = ip.split(":");
-    if (parts.length >= 2) {
-      parts[1] = "****";
-      return parts.slice(0, 3).join(":");
-    }
-  }
-  return ip;
-}
-
 export function generateSVG(info, queryText = "") {
-  const width = 550;
-  const height = 230;
+  const W = 534;
+  const H = 256;
 
-  const lines = [];
+  const textLines = [];
 
-  lines.push({
-    text: `欢迎您来自${info.location}的朋友`,
-    y: 42,
-  });
-  lines.push({
-    text: `今天是${info.dateStr} ${info.weekStr}`,
-    y: 74,
-  });
+  textLines.push({ text: `欢迎您来自${info.location}的朋友`, y: 35 });
+  textLines.push({ text: `今天是${info.dateStr} ${info.weekStr}`, y: 72 });
 
-  let ipLine = `您的IP是:${info.maskedIp || info.ip}`;
+  let ipLine = `您的IP是:${info.ip}`;
   if (info.weather) {
     ipLine += `  ${info.weather.text}`;
   }
-  lines.push({ text: ipLine, y: 108 });
+  textLines.push({ text: ipLine, y: 110 });
 
-  lines.push({
-    text: `您使用的是${info.os}操作系统`,
-    y: 144,
-  });
-  lines.push({
-    text: `您使用的是${info.browser}`,
-    y: 179,
-  });
+  textLines.push({ text: `您使用的是${info.os}操作系统`, y: 148 });
+  textLines.push({ text: `您使用的是${info.browser}`, y: 186 });
 
   if (queryText) {
-    lines.push({ text: queryText, y: 208, small: true });
+    textLines.push({ text: queryText, y: 220, small: true });
   }
 
-  const svgLines = lines.map((line, i) => {
-    const fontSize = line.small ? 14 : 18;
-    const fill = i >= 5 || line.small ? "#333333" : "#e60012";
-    return `<text x="18" y="${line.y}" font-family="msyh, Microsoft YaHei, 微软雅黑, sans-serif" font-size="${fontSize}" font-weight="bold" fill="${fill}">${escapeXml(line.text)}</text>`;
+  const TEXT_X = 20;
+
+  const textEls = textLines.map((line) => {
+    const fontSize = line.small ? 15 : 17;
+    const fill = line.small ? "#6b4a35" : "#5a3825";
+    return `<text x="${TEXT_X}" y="${line.y}" font-family="msyh, Microsoft YaHei, sans-serif" font-size="${fontSize}" font-weight="bold" fill="${fill}">${escapeXml(line.text)}</text>`;
   });
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  function measureTextWidth(text, fontSize) {
+    let width = 0;
+    for (const ch of text) {
+      if (/[\u4e00-\u9fff]/.test(ch)) {
+        width += fontSize;
+      } else if (/\s/.test(ch)) {
+        width += fontSize * 0.3;
+      } else {
+        width += fontSize * 0.6;
+      }
+    }
+    return width;
+  }
+
+  const underlineEls = textLines.map((line) => {
+    const fontSize = line.small ? 15 : 17;
+    const textWidth = measureTextWidth(line.text, fontSize);
+    const ulY = line.y + 4;
+    return `<line x1="${TEXT_X}" y1="${ulY}" x2="${TEXT_X + textWidth}" y2="${ulY}" stroke="#5a3825" stroke-width="1.5"/>`;
+  });
+
+  const mascotX = 300;
+  const mascotY = -4;
+  const mascotW = 230;
+  const mascotH = 260;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>
     <style type="text/css">
       @font-face {
@@ -107,19 +106,17 @@ export function generateSVG(info, queryText = "") {
         src: url('/msyh.ttf') format('truetype');
       }
     </style>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#fff5f5;stop-opacity:1" />
-      <stop offset="50%" style="stop-color:#ffe8e8;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#ffd4d4;stop-opacity:1" />
-    </linearGradient>
-    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
-      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#00000022" />
-    </filter>
+    <clipPath id="cardClip">
+      <rect x="0" y="0" width="${W}" height="${H}"/>
+    </clipPath>
   </defs>
-  <rect width="100%" height="100%" fill="url(#bg)" />
-  <rect x="1" y="1" width="${width - 2}" height="${height - 2}" fill="none" stroke="#e60012" stroke-width="2" rx="4" ry="4" />
-  <g filter="url(#shadow)">
-    ${svgLines.join("\n    ")}
+  <image href="/bg.jpg" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"/>
+  <g clip-path="url(#cardClip)">
+    <image href="/kbn.png" x="${mascotX}" y="${mascotY}" width="${mascotW}" height="${mascotH}" preserveAspectRatio="xMidYMax meet"/>
+  </g>
+  <g>
+    ${underlineEls.join("\n    ")}
+    ${textEls.join("\n    ")}
   </g>
 </svg>`;
 
@@ -149,7 +146,7 @@ export function generateHTML(info, svg) {
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'msyh', "Microsoft YaHei", "微软雅黑", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: 'msyh', "Microsoft YaHei", sans-serif;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       min-height: 100vh;
       display: flex;
@@ -267,7 +264,6 @@ export function generateHTML(info, svg) {
       <h1>🌐 您的网络信息</h1>
       <p>基于 Cloudflare Workers 的 IP 签名档服务</p>
     </div>
-
     <div class="card">
       <ul class="info-list">
         <li class="info-item">
@@ -280,7 +276,7 @@ export function generateHTML(info, svg) {
         </li>
         <li class="info-item">
           <span class="info-label">🌍 IP地址</span>
-          <span class="info-value highlight">${info.maskedIp || info.ip}</span>
+          <span class="info-value highlight">${info.ip}</span>
         </li>
         ${
           info.weather
@@ -299,12 +295,10 @@ export function generateHTML(info, svg) {
           <span class="info-value">${info.browser}</span>
         </li>
       </ul>
-
       <div class="preview">
         <p class="preview-title">📋 签名档预览</p>
         ${svg}
       </div>
-
       <div class="usage">
         <h3>📝 使用方法</h3>
         <p>在论坛或支持 HTML 的平台中，使用以下代码引用您的签名档：</p>
@@ -313,7 +307,6 @@ export function generateHTML(info, svg) {
         <code>&lt;img src="${info.baseUrl || ""}/svg?s=自定义文字" alt="IP签名档" /&gt;</code>
       </div>
     </div>
-
     <p class="footer">Powered by Cloudflare Workers ☁️</p>
   </div>
 </body>
