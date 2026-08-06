@@ -5,17 +5,19 @@ const WEEK_MAP = ["日", "一", "二", "三", "四", "五", "六"];
 
 async function ipGeoLookup(ip) {
   try {
-    const res = await fetch(`http://ip-api.com/json/${ip}?lang=zh-CN&fields=status,country,regionName,city,lat,lon`, {
+    const res = await fetch(`https://uapis.cn/api/v1/network/ipinfo?ip=${encodeURIComponent(ip)}`, {
       signal: AbortSignal.timeout(3000),
     });
     const data = await res.json();
-    if (data.status === "success") {
+    if (data.region && data.region !== "*") {
+      // region 格式: "中国 江苏 南京"
+      const parts = data.region.split(/\s+/).filter(Boolean);
       return {
-        country: data.country || "",
-        region: data.regionName || "",
-        city: data.city || "",
-        latitude: data.lat,
-        longitude: data.lon,
+        country: parts[0] || "",
+        region: parts[1] || "",
+        city: parts[2] || "",
+        latitude: data.latitude,
+        longitude: data.longitude,
       };
     }
   } catch (_e) {
