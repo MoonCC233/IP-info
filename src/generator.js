@@ -127,13 +127,71 @@ export function generateSVG(info, queryText = "") {
   const TEXT_X = 20;
   const FONT_SIZE = 17;
   const FONT_SIZE_SMALL = 15;
-  // 每个中文字符≈1em宽，英数≈0.6em；SVG viewer宽度下近似估算线长，尽量贴近文本
+
+  // 计算文字块的整体偏移，使其在 SVG 内垂直居中（第一行顶部到顶端距离 = 最后一行底部到底端距离）
+  {
+    const ASCENT_RATIO = 0.85; // 微软雅黑 Bold：字形顶部在基线上方约 0.85em
+    const DESCENT_RATIO = 0.22; // 字形底部在基线下方约 0.22em
+    let firstTop = Infinity;
+    let lastBottom = -Infinity;
+    for (const line of textLines) {
+      const fs = line.small ? FONT_SIZE_SMALL : FONT_SIZE;
+      const top = line.y - fs * ASCENT_RATIO;
+      const bottom = line.y + fs * DESCENT_RATIO;
+      if (top < firstTop) firstTop = top;
+      if (bottom > lastBottom) lastBottom = bottom;
+    }
+    const blockHeight = lastBottom - firstTop;
+    const targetPadding = (H - blockHeight) / 2;
+    const offsetY = Math.round(targetPadding - firstTop);
+    if (offsetY !== 0) {
+      for (const line of textLines) line.y += offsetY;
+    }
+  }
+  // 逐字符精确估算下划线长度（基于微软雅黑 Bold 的实际字形宽度校准）
   function underlineWidth(str, fontSize) {
     let w = 0;
     for (const ch of str) {
-      w += /[\u4e00-\u9fff\uff00-\uffef\u3000-\u303f]/.test(ch) ? fontSize : fontSize * 0.6;
+      const code = ch.charCodeAt(0);
+      if (
+        // CJK 统一汉字 / 兼容汉字 / 全角标点 / 平假名片假名 / 中文符号 → 1em
+        (code >= 0x4e00 && code <= 0x9fff) ||
+        (code >= 0x3400 && code <= 0x4dbf) ||
+        (code >= 0xf900 && code <= 0xfaff) ||
+        (code >= 0xff00 && code <= 0xffef) ||
+        (code >= 0x3000 && code <= 0x303f) ||
+        (code >= 0x3040 && code <= 0x30ff) ||
+        ch === "℃" || ch === "×" || ch === "÷"
+      ) {
+        w += fontSize * 1.0;
+      } else if (code >= 0x41 && code <= 0x5a) {
+        // A-Z 大写字母 → 0.58em
+        w += fontSize * 0.58;
+      } else if (code >= 0x61 && code <= 0x7a) {
+        // a-z 小写字母 → 0.5em
+        w += fontSize * 0.5;
+      } else if (code >= 0x30 && code <= 0x39) {
+        // 0-9 数字 → 0.5em
+        w += fontSize * 0.5;
+      } else if (ch === " " || ch === "\t") {
+        // 空格 → 0.25em
+        w += fontSize * 0.25;
+      } else if (ch === ":" || ch === "." || ch === "," || ch === ";" || ch === "`" || ch === "'" || ch === "·") {
+        // 细标点 → 0.25em
+        w += fontSize * 0.25;
+      } else if (ch === "-" || ch === "_" || ch === "/" || ch === "\\" || ch === "(" || ch === ")" || ch === "[" || ch === "]" || ch === "{" || ch === "}" || ch === "<" || ch === ">") {
+        // 括号/斜杠类 → 0.3em
+        w += fontSize * 0.3;
+      } else if (ch === "!" || ch === "?" || ch === "@" || ch === "#" || ch === "$" || ch === "%" || ch === "^" || ch === "&" || ch === "*" || ch === "+" || ch === "=" || ch === "~" || ch === "|" || ch === "\"") {
+        // 其他半角符号 → 0.4em
+        w += fontSize * 0.4;
+      } else {
+        // 未知字符保守取 0.6em
+        w += fontSize * 0.6;
+      }
     }
-    return Math.round(w + fontSize * 0.4);
+    // 收尾收紧 2%，宁可略短不要长出
+    return Math.max(fontSize, Math.round(w * 0.98));
   }
 
   const mascotX = 300;
@@ -188,17 +246,46 @@ function escapeXml(text) {
 }
 
 export function generateHTML(info, svg) {
-  function codeBlock(raw) {
+  function escapeAttr(s) {
+    return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  }
+  function codeBlock(raw, template) {
     const htmlSafe = raw
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
-    const attrSafe = raw
-      .replace(/&/g, "&amp;")
-      .replace(/"/g, "&quot;");
-    return `<div class="code-block"><code>${htmlSafe}</code><button type="button" class="copy-btn" data-copy="${attrSafe}" title="复制代码">📋 复制</button></div>`;
+    return `<div class="code-block" data-tpl="${escapeAttr(template)}"><code>${htmlSafe}</code><button type="button" class="copy-btn" data-copy="${escapeAttr(raw)}" title="复制代码">📋 复制</button></div>`;
   }
   const baseUrl = info.baseUrl || "";
+  const DEFAULT_FMT = "jpg";
+  const endpointOf = function (fmt) {
+    if (fmt === "svg") return "/svg";
+    if (fmt === "png") return "/png";
+    return "/jpg";
+  };
+  // 占位符 {EP} = endpoint (relative), {EP_FULL} = absolute URL, {SUFFIX} = ?s= 占位
+  const tpl = function (fmt) {
+    const ep = endpointOf(fmt);
+    const full = baseUrl + ep;
+    const html = {
+      basic: `<img src="${full}" alt="IP签名档" />`,
+      custom: `<img src="${full}?s=自定义文字" alt="IP签名档" />`,
+    };
+    const md = {
+      basic: `![IP签名档](${full})`,
+      custom: `![IP签名档](${full}?s=自定义文字)`,
+    };
+    const bb = {
+      basic: `[img]${full}[/img]`,
+      custom: `[img]${full}?s=自定义文字[/img]`,
+    };
+    const link = {
+      basic: `${full}`,
+      custom: `${full}?s=自定义文字`,
+    };
+    return { html, md, bb, link, endpoint: ep };
+  };
+  const initTpl = tpl(DEFAULT_FMT);
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -227,6 +314,11 @@ export function generateHTML(info, svg) {
       --code-bg: #2d2d2d;
       --code-text: #f8f8f2;
       --footer-text: #ffffff;
+      --switch-bg: rgba(255, 255, 255, 0.7);
+      --switch-border: rgba(102, 126, 234, 0.18);
+      --switch-ink: #475569;
+      --switch-slider: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --switch-shadow: 0 4px 12px rgba(102, 126, 234, 0.35);
     }
     [data-theme="dark"] {
       --bg-gradient-start: #1a1a2e;
@@ -244,6 +336,11 @@ export function generateHTML(info, svg) {
       --code-bg: #111827;
       --code-text: #e5e7eb;
       --footer-text: #e5e7eb;
+      --switch-bg: rgba(17, 24, 39, 0.85);
+      --switch-border: rgba(255, 255, 255, 0.1);
+      --switch-ink: #cbd5e1;
+      --switch-slider: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      --switch-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -440,6 +537,64 @@ export function generateHTML(info, svg) {
     [data-theme="dark"] .copy-btn.copied {
       background: rgba(72, 187, 120, 0.25);
     }
+    .format-switch {
+      display: inline-flex;
+      align-items: center;
+      position: relative;
+      background: var(--switch-bg);
+      border-radius: 999px;
+      padding: 4px;
+      gap: 2px;
+      margin-left: 12px;
+      vertical-align: middle;
+      border: 1px solid var(--switch-border);
+      transition: background 0.3s ease, border-color 0.3s ease;
+    }
+    .format-switch button {
+      position: relative;
+      z-index: 1;
+      border: none;
+      background: transparent;
+      color: var(--switch-ink);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: color 0.25s ease;
+    }
+    .format-switch button.is-active {
+      color: #fff;
+    }
+    .format-switch .slider {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      height: calc(100% - 8px);
+      width: 60px;
+      background: var(--switch-slider);
+      border-radius: 999px;
+      box-shadow: var(--switch-shadow);
+      transition: transform 0.35s cubic-bezier(0.4, 0.0, 0.2, 1), width 0.35s cubic-bezier(0.4, 0.0, 0.2, 1);
+      z-index: 0;
+    }
+    .usage-header {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .usage-header h3 {
+      margin: 0;
+    }
+    .format-hint {
+      color: var(--text-muted);
+      font-size: 11px;
+      flex-basis: 100%;
+      text-align: center;
+    }
     .footer {
       text-align: center;
       color: var(--footer-text);
@@ -493,30 +648,39 @@ export function generateHTML(info, svg) {
         ${svg}
       </div>
       <div class="usage">
-        <h3>📝 使用方法</h3>
+        <div class="usage-header">
+          <h3>📝 使用方法</h3>
+          <div class="format-switch" role="tablist" aria-label="端点格式切换">
+            <span class="slider" aria-hidden="true"></span>
+            <button type="button" class="format-btn" data-fmt="svg" role="tab" aria-selected="false">SVG</button>
+            <button type="button" class="format-btn is-active" data-fmt="jpg" role="tab" aria-selected="true">JPG</button>
+            <button type="button" class="format-btn" data-fmt="png" role="tab" aria-selected="false">PNG</button>
+          </div>
+          <span class="format-hint" data-format-hint>默认：JPG · GitHub README 推荐使用</span>
+        </div>
         <h4>🌐 HTML（网站 / 博客 / 支持 HTML 的论坛）</h4>
         <p>基础签名档：</p>
-        ${codeBlock(`<img src="${baseUrl}/svg" alt="IP签名档" />`)}
+        ${codeBlock(initTpl.html.basic, "html.basic")}
         <p>带自定义文字（可选）：</p>
-        ${codeBlock(`<img src="${baseUrl}/svg?s=自定义文字" alt="IP签名档" />`)}
+        ${codeBlock(initTpl.html.custom, "html.custom")}
 
         <h4>📋 Markdown（GitHub / README / 支持 Markdown 的平台）</h4>
         <p>基础签名档：</p>
-        ${codeBlock(`![IP签名档](${baseUrl}/svg)`)}
+        ${codeBlock(initTpl.md.basic, "md.basic")}
         <p>带自定义文字（可选）：</p>
-        ${codeBlock(`![IP签名档](${baseUrl}/svg?s=自定义文字)`)}
+        ${codeBlock(initTpl.md.custom, "md.custom")}
 
         <h4>🏷️ BBCode / UBB（传统论坛如 Discuz!、phpBB 等）</h4>
         <p>基础签名档：</p>
-        ${codeBlock(`[img]${baseUrl}/svg[/img]`)}
+        ${codeBlock(initTpl.bb.basic, "bb.basic")}
         <p>带自定义文字（可选）：</p>
-        ${codeBlock(`[img]${baseUrl}/svg?s=自定义文字[/img]`)}
+        ${codeBlock(initTpl.bb.custom, "bb.custom")}
 
         <h4>🔗 直接链接（复制粘贴即可）</h4>
         <p>基础签名档：</p>
-        ${codeBlock(`${baseUrl}/svg`)}
+        ${codeBlock(initTpl.link.basic, "link.basic")}
         <p>带自定义文字（可选）：</p>
-        ${codeBlock(`${baseUrl}/svg?s=自定义文字`)}
+        ${codeBlock(initTpl.link.custom, "link.custom")}
       </div>
     </div>
     <p class="footer">Powered by Cloudflare Workers ☁️</p>
@@ -623,6 +787,116 @@ export function generateHTML(info, svg) {
         e.preventDefault();
         var text = btn.getAttribute('data-copy') || '';
         copyText(text, btn);
+      });
+    })();
+
+    (function () {
+      var BASE_URL = ${JSON.stringify(baseUrl)};
+      var DEFAULT_FMT = ${JSON.stringify(DEFAULT_FMT)};
+      var FMT_HINTS = {
+        svg: '矢量 · 论坛/博客内嵌首选（部分平台可能无法显示中文）',
+        jpg: '位图 · 体积小，GitHub README / camo 代理首选',
+        png: '位图 · 无损高清，需透明背景时使用',
+      };
+      function endpointOf(fmt) {
+        if (fmt === 'svg') return '/svg';
+        if (fmt === 'png') return '/png';
+        return '/jpg';
+      }
+      function templatesFor(fmt) {
+        var full = BASE_URL + endpointOf(fmt);
+        return {
+          html: {
+            basic: '<img src="' + full + '" alt="IP签名档" />',
+            custom: '<img src="' + full + '?s=自定义文字" alt="IP签名档" />',
+          },
+          md: {
+            basic: '![IP签名档](' + full + ')',
+            custom: '![IP签名档](' + full + '?s=自定义文字)',
+          },
+          bb: {
+            basic: '[img]' + full + '[/img]',
+            custom: '[img]' + full + '?s=自定义文字[/img]',
+          },
+          link: {
+            basic: full,
+            custom: full + '?s=自定义文字',
+          },
+        };
+      }
+      function escapeHtml(s) {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+      function resolveTpl(kind, custom, fmt) {
+        var t = templatesFor(fmt);
+        var keys = kind.split('.');
+        var group = t[keys[0]] || {};
+        return group[keys[1]] || '';
+      }
+      var hintEl = document.querySelector('[data-format-hint]');
+      var switchEl = document.querySelector('.format-switch');
+      var sliderEl = switchEl ? switchEl.querySelector('.slider') : null;
+      var btns = switchEl ? Array.prototype.slice.call(switchEl.querySelectorAll('.format-btn')) : [];
+      var codeBlocks = document.querySelectorAll('.code-block[data-tpl]');
+
+      function positionSlider(activeBtn) {
+        if (!sliderEl || !activeBtn) return;
+        var containerRect = switchEl.getBoundingClientRect();
+        var btnRect = activeBtn.getBoundingClientRect();
+        var offsetX = btnRect.left - containerRect.left - 4; // 4 = switch padding left
+        sliderEl.style.width = btnRect.width + 'px';
+        sliderEl.style.transform = 'translateX(' + offsetX + 'px)';
+      }
+      function updateCodeBlocks(fmt) {
+        for (var i = 0; i < codeBlocks.length; i++) {
+          var block = codeBlocks[i];
+          var tpl = block.getAttribute('data-tpl') || '';
+          var custom = /\.custom$/.test(tpl);
+          var kind = tpl.replace(/\.(basic|custom)$/, '') + (custom ? '.custom' : '.basic');
+          var text = resolveTpl(kind, custom, fmt);
+          var codeEl = block.querySelector('code');
+          var copyBtn = block.querySelector('.copy-btn');
+          if (codeEl) codeEl.textContent = text;
+          if (copyBtn) {
+            copyBtn.setAttribute('data-copy', text);
+            copyBtn.classList.remove('copied');
+            copyBtn.innerHTML = '📋 复制';
+          }
+        }
+      }
+      function activate(fmt) {
+        for (var i = 0; i < btns.length; i++) {
+          var b = btns[i];
+          var isActive = b.getAttribute('data-fmt') === fmt;
+          b.classList.toggle('is-active', isActive);
+          b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+          if (isActive) positionSlider(b);
+        }
+        if (hintEl) hintEl.textContent = (fmt === DEFAULT_FMT ? '默认：' : '') + (fmt.toUpperCase()) + ' · ' + (FMT_HINTS[fmt] || '');
+        updateCodeBlocks(fmt);
+      }
+      for (var j = 0; j < btns.length; j++) {
+        btns[j].addEventListener('click', function (e) {
+          var fmt = e.currentTarget.getAttribute('data-fmt');
+          if (!fmt) return;
+          try { localStorage.setItem('ip-info-format', fmt); } catch (_) {}
+          activate(fmt);
+        });
+      }
+      function initFormat() {
+        var saved = null;
+        try { saved = localStorage.getItem('ip-info-format'); } catch (_) {}
+        var fmt = (saved === 'svg' || saved === 'jpg' || saved === 'png') ? saved : DEFAULT_FMT;
+        activate(fmt);
+      }
+      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(initFormat, 0);
+      } else {
+        window.addEventListener('DOMContentLoaded', initFormat);
+      }
+      window.addEventListener('resize', function () {
+        var activeBtn = switchEl ? switchEl.querySelector('.format-btn.is-active') : null;
+        positionSlider(activeBtn);
       });
     })();
   </script>

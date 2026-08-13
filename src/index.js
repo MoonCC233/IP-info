@@ -1,6 +1,8 @@
 import { generateInfo, generateSVG, generateHTML } from "./generator.js";
+import { svgToJpeg, svgToPng, buildSelfContainedSVG, prepareAssets } from "./image.js";
 
 const CACHE_TTL = 60;
+const IMG_CACHE_TTL = 120;
 
 export default {
   async fetch(request, env, ctx) {
@@ -20,15 +22,19 @@ export default {
 
     try {
       if (pathname === "/" || pathname === "") {
-        return handleHome(request, ctx);
+        return handleHome(request, env, ctx);
       }
 
       if (pathname === "/svg" || pathname === "/img") {
-        return handleSVG(request, ctx);
+        return handleSVG(request, env, ctx);
+      }
+
+      if (pathname === "/preview.jpg" || pathname === "/preview.png" || pathname === "/jpg" || pathname === "/png") {
+        return handlePreview(request, env, ctx);
       }
 
       if (pathname === "/api/info") {
-        return handleAPI(request, ctx);
+        return handleAPI(request, env, ctx);
       }
 
       if (pathname === "/health") {
@@ -51,7 +57,7 @@ export default {
   },
 };
 
-async function handleHome(request, ctx) {
+async function handleHome(request, env, ctx) {
   const info = await generateInfo(request);
   info.baseUrl = new URL(request.url).origin;
   const svg = generateSVG(info);
@@ -67,7 +73,7 @@ async function handleHome(request, ctx) {
   });
 }
 
-async function handleSVG(request, ctx) {
+async function handleSVG(request, env, ctx) {
   const info = await generateInfo(request);
   info.baseUrl = new URL(request.url).origin;
 
@@ -91,7 +97,49 @@ async function handleSVG(request, ctx) {
   return new Response(svg, { headers });
 }
 
-async function handleAPI(request, ctx) {
+async function handlePreview(request, env, ctx) {
+  const url = new URL(request.url);
+  const origin = url.origin;
+  const info = await generateInfo(request);
+  info.baseUrl = origin;
+  const queryText = decodeURIComponent(url.searchParams.get("s") || "");
+  const scale = url.searchParams.get("scale") === "2" ? 2 : 1;
+
+  const [assets, svg] = await Promise.all([
+    prepareAssets(origin, env),
+    Promise.resolve(generateSVG(info, queryText)),
+  ]);
+  const standaloneSVG = buildSelfContainedSVG(svg, origin, assets);
+
+  // 默认输出 JPEG（体积小、兼容性好），明确请求 .png 时输出 PNG
+  const isPng = /\.png$|\/png$/.test(url.pathname);
+  let body;
+  let contentType;
+  if (isPng) {
+    body = await svgToPng(standaloneSVG, { scale, fontBuffer: assets.fontBuffer });
+    contentType = "image/png";
+  } else {
+    body = await svgToJpeg(standaloneSVG, { scale, quality: 92, fontBuffer: assets.fontBuffer });
+    contentType = "image/jpeg";
+  }
+
+  const headers = {
+    "Content-Type": contentType,
+    "Cache-Control": `public, max-age=${IMG_CACHE_TTL}, s-maxage=${IMG_CACHE_TTL}`,
+    "Access-Control-Allow-Origin": "*",
+  };
+
+  const etag = `W/"${hashBytes(body)}"`;
+  const ifNoneMatch = request.headers.get("if-none-match");
+  if (ifNoneMatch === etag) {
+    return new Response(null, { status: 304, headers: { etag, ...headers } });
+  }
+  headers["etag"] = etag;
+
+  return new Response(body, { headers });
+}
+
+async function handleAPI(request, env, ctx) {
   const info = await generateInfo(request);
 
   const response = {
@@ -125,4 +173,13 @@ function hashString(str) {
     hash |= 0;
   }
   return Math.abs(hash).toString(36);
+}
+
+function hashBytes(bytes) {
+  let hash = 2166136261;
+  for (let i = 0; i < bytes.length; i++) {
+    hash ^= bytes[i];
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }

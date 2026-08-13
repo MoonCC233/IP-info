@@ -16,27 +16,29 @@
 ## 签名档效果
 
 <p align="center">
-  <img src="./example.jpeg" alt="IP 签名档预览" width="534" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15);">
+  <img src="./example.png" alt="IP 签名档预览" width="534" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15);">
 </p>
 
 <p align="center">
-  <em>静态预览图（上）· 已部署服务的动态签名档（下，实时变化）</em>
+  <em>静态预览图（上）· 已部署服务的动态签名档（下，实时变化，JPEG 格式，兼容 GitHub camo 代理）</em>
 </p>
 
 <p align="center">
-  <img src="https://ip-info.mooncc.cn/svg?s=欢迎使用IP-info项目！" alt="动态IP签名档" width="534" />
+  <img src="https://ip-info.mooncc.cn/preview.jpg?s=欢迎使用IP-info项目！" alt="动态IP签名档" width="534" />
 </p>
 
-部署后将下方链接替换为你的域名，即可在 GitHub README 中展示动态签名档：
+部署后将下方链接替换为你的域名，即可在 GitHub README 中展示动态签名档（推荐使用 `/preview.jpg`，兼容性最好）：
 
 ```markdown
-![IP签名档](https://ip-info.<你的子域>.workers.dev/svg)
+![IP签名档](https://ip-info.<你的子域>.workers.dev/preview.jpg)
 ```
 
 > **说明**：
+> - 推荐用 `/preview.jpg` 渲染成 JPEG 位图，GitHub camo 代理对 JPEG 兼容性最好，几乎不会渲染失败
+> - 如需无损 PNG 或透明背景，可使用 `/preview.png` 端点
+> - 如果希望纯矢量可缩放，可使用原 `/svg` 端点，但 GitHub 或部分论坛可能会因 SVG 内的字体/图片引用导致渲染异常
 > - GitHub 通过 camo 代理缓存图片，首次加载或更新可能有数分钟延迟，可点击仓库 **Commit changes...** 触发重新渲染
 > - 每位访客看到的 IP / 地区 / 浏览器等信息会根据其自身网络环境动态变化
-> - 若 SVG 在 camo 下加载失败，可同时使用静态预览图 `example.png` 作为兜底
 
 签名档包含以下元素：
 - 📍 访问者地区信息
