@@ -53,10 +53,8 @@ export default {
 
 async function handleHome(request, ctx) {
   const info = await generateInfo(request);
+  info.baseUrl = new URL(request.url).origin;
   const svg = generateSVG(info);
-
-  const baseUrl = new URL(request.url).origin;
-  info.baseUrl = baseUrl;
 
   const html = generateHTML(info, svg);
 
@@ -71,6 +69,7 @@ async function handleHome(request, ctx) {
 
 async function handleSVG(request, ctx) {
   const info = await generateInfo(request);
+  info.baseUrl = new URL(request.url).origin;
 
   const queryText = decodeURIComponent(new URL(request.url).searchParams.get("s") || "");
   const svg = generateSVG(info, queryText);
@@ -97,15 +96,14 @@ async function handleAPI(request, ctx) {
 
   const response = {
     ip: info.ip,
-    maskedIp: info.maskedIp,
     location: info.location,
     country: info.country,
     region: info.region,
     city: info.city,
     os: info.os,
     browser: info.browser,
-    date: info.dateStr,
-    week: info.weekStr,
+    dateStr: info.dateStr,
+    weekStr: info.weekStr,
     weather: info.weather,
     timestamp: info.timestamp,
   };

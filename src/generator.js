@@ -104,6 +104,7 @@ export async function generateInfo(request) {
 export function generateSVG(info, queryText = "") {
   const W = 534;
   const H = 256;
+  const base = info.baseUrl || "";
 
   const textLines = [];
 
@@ -132,30 +133,27 @@ export function generateSVG(info, queryText = "") {
   const mascotW = 230;
   const mascotH = 260;
 
+  // 使用 <text> 替代 <foreignObject>，确保在 <img> 上下文中也能渲染
   const textEls = textLines.map((line) => {
     const fs = line.small ? FONT_SIZE_SMALL : FONT_SIZE;
     const color = line.small ? "#6b4a35" : "#5a3825";
-    const divY = line.y - fs;
-    return `<foreignObject x="${TEXT_X}" y="${divY}" width="${W - TEXT_X}" height="${fs + 12}">
-      <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;font-family:msyh,'Microsoft YaHei',sans-serif;font-size:${fs}px;font-weight:bold;color:${color};text-decoration:underline;text-underline-offset:4px;white-space:nowrap">${escapeXml(line.text)}</div>
-    </foreignObject>`;
+    return `<text x="${TEXT_X}" y="${line.y}" font-family="'Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC',sans-serif" font-size="${fs}" font-weight="bold" fill="${color}" text-decoration="underline">${escapeXml(line.text)}</text>`;
   });
+
+  const fontFace = base
+    ? `<style type="text/css">@font-face{font-family:'msyh';src:url('${base}/msyh.ttf') format('truetype');}</style>`
+    : "";
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>
-    <style type="text/css">
-      @font-face {
-        font-family: 'msyh';
-        src: url('/msyh.ttf') format('truetype');
-      }
-    </style>
+    ${fontFace}
     <clipPath id="cardClip">
       <rect x="0" y="0" width="${W}" height="${H}"/>
     </clipPath>
   </defs>
-  <image href="/bg.jpg" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"/>
+  <image href="${base}/bg.jpg" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"/>
   <g clip-path="url(#cardClip)">
-    <image href="/kbn.png" x="${mascotX}" y="${mascotY}" width="${mascotW}" height="${mascotH}" preserveAspectRatio="xMidYMax meet"/>
+    <image href="${base}/kbn.png" x="${mascotX}" y="${mascotY}" width="${mascotW}" height="${mascotH}" preserveAspectRatio="xMidYMax meet"/>
   </g>
   ${textEls.join("\n    ")}
 </svg>`;

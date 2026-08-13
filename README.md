@@ -15,6 +15,28 @@
 
 ## 签名档效果
 
+<p align="center">
+  <img src="./example.jpeg" alt="IP 签名档预览" width="534" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15);">
+</p>
+
+<p align="center">
+  <em>静态预览图（上）· 部署后在 README 中引用动态签名档（下）</em>
+</p>
+
+部署后将下方链接替换为你的域名，即可在 GitHub README 中展示动态签名档：
+
+```markdown
+![IP签名档](https://ip-info.<你的子域>.workers.dev/svg)
+```
+
+效果如下（链接替换后生效）：
+
+<p align="center">
+  <img src="https://ip-info.mooncc.cn/svg?s=欢迎使用IP-info项目！" alt="动态IP签名档" width="534" />
+</p>
+
+> **注意**：GitHub 会通过 camo 代理缓存图片，更新可能有数分钟延迟；每位访客看到的 IP / 地区 / 浏览器等信息会根据其自身网络环境动态变化。
+
 签名档包含以下元素：
 - 📍 访问者地区信息
 - 📅 日期和星期
@@ -107,43 +129,61 @@ npm run deploy
 
 ### 在论坛 / 博客中引用签名档
 
+将下面的 `<你的子域>` 替换为你实际部署得到的子域，或替换为自定义域名（如 `ip-info.mooncc.cc`）。
+
 #### 🌐 HTML（网站 / 博客 / 支持 HTML 的论坛）
 
-```html
-<!-- 基础签名档 -->
-<img src="https://ip-info.<你的子域>.workers.dev/svg" alt="IP签名档" />
+基础签名档：
 
-<!-- 带自定义文字 -->
+```html
+<img src="https://ip-info.<你的子域>.workers.dev/svg" alt="IP签名档" />
+```
+
+带自定义文字（可选）：
+
+```html
 <img src="https://ip-info.<你的子域>.workers.dev/svg?s=欢迎光临" alt="IP签名档" />
 ```
 
 #### 📋 Markdown（GitHub / README / 支持 Markdown 的平台）
 
-```markdown
-<!-- 基础签名档 -->
-![IP签名档](https://ip-info.<你的子域>.workers.dev/svg)
+基础签名档：
 
-<!-- 带自定义文字 -->
+```markdown
+![IP签名档](https://ip-info.<你的子域>.workers.dev/svg)
+```
+
+带自定义文字（可选）：
+
+```markdown
 ![IP签名档](https://ip-info.<你的子域>.workers.dev/svg?s=欢迎光临)
 ```
 
 #### 🏷️ BBCode / UBB（传统论坛如 Discuz!、phpBB 等）
 
-```bbcode
-<!-- 基础签名档 -->
-[img]https://ip-info.<你的子域>.workers.dev/svg[/img]
+基础签名档：
 
-<!-- 带自定义文字 -->
+```bbcode
+[img]https://ip-info.<你的子域>.workers.dev/svg[/img]
+```
+
+带自定义文字（可选）：
+
+```bbcode
 [img]https://ip-info.<你的子域>.workers.dev/svg?s=欢迎光临[/img]
 ```
 
 #### 🔗 直接链接（复制粘贴即可）
 
-```
 基础签名档：
-https://ip-info.<你的子域>.workers.dev/svg
 
-带自定义文字：
+```
+https://ip-info.<你的子域>.workers.dev/svg
+```
+
+带自定义文字（可选）：
+
+```
 https://ip-info.<你的子域>.workers.dev/svg?s=欢迎光临
 ```
 
