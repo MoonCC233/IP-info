@@ -1,6 +1,7 @@
 import { Resvg, initWasm } from "@resvg/resvg-wasm";
 import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm";
 import jpeg from "jpeg-js";
+import { assetBytesByModule } from "./_assets/manifest.js";
 
 let wasmReady = false;
 async function ensureWasm() {
@@ -21,18 +22,115 @@ function bytesToBase64(bytes) {
 }
 
 async function fetchAssetBytes(baseUrl, relPath, env) {
+  // prepareAssets 内部调用：允许 HTTP fallback（本地 dev / 旧部署兼容），但增加内部递归标记防死循环
+  return fetchAssetBytesPublic(baseUrl, relPath, env, { allowHttpFallback: true });
+}
+
+// 取 env 上所有可能作为候选 binding 的 key（含 ASSET/STATIC 名称 或 有 fetch 方法）
+function enumerateAssetBindingCandidates(env) {
+  if (!env || typeof env !== "object") return [];
+  const seen = new Set();
+  const keys = [];
+  const pushKey = (k) => {
+    const s = String(k);
+    if (!seen.has(s)) {
+      seen.add(s);
+      keys.push(s);
+    }
+  };
+  try { for (const k of Reflect.ownKeys(env)) pushKey(k); } catch (_) {}
+  try { for (const k in env) pushKey(k); } catch (_) {}
+  const hardcoded = ["ASSETS", "__ASSETS", "__STATIC_CONTENT", "STATIC_CONTENT", "ASSET", "STATIC", "SITE", "SITE_BUCKET", "ASSETS_BUCKET", "__ASSET_MANIFEST", "MANIFEST"];
+  hardcoded.forEach(pushKey);
+  // 优先级：名字里包含 ASSET/STATIC/SITE 的靠前（更可能是 Assets binding），剩下的有 fetch 方法的也尝试
+  const score = (name) => {
+    const up = name.toUpperCase();
+    if (up.includes("ASSET")) return 0;
+    if (up.includes("STATIC")) return 1;
+    if (up.includes("SITE")) return 2;
+    if (up.includes("MANIFEST")) return 3;
+    return 10;
+  };
+  keys.sort((a, b) => score(a) - score(b));
+  return keys;
+}
+
+// 公开版本：供 Worker 路由层直接调用（静态文件直出 & 诊断）
+// opts.allowHttpFallback: false 时禁止 HTTP self-fetch（避免 handleStatic 内部递归）
+export async function fetchAssetBytesPublic(baseUrl, relPath, env, opts) {
+  const allowHttpFallback = !(opts && opts.allowHttpFallback === false);
+  const cleanRel = relPath.startsWith("/") ? relPath.slice(1) : relPath;
+  const slashKey = "/" + cleanRel;
+
+  // 优先级 1：Data 模块导入（wrangler rules=Data，不计入 script size 限制，最稳）
   try {
-    const abs = new URL(relPath, baseUrl).href;
-    const resp = await fetch(abs, { cf: { cacheTtl: 3600, cacheEverything: true } });
+    const buf = assetBytesByModule(slashKey);
+    if (buf && buf.length) return buf;
+  } catch (_) {}
+
+  // 优先级 2：Assets binding（如果 wrangler 正确注入了 binding）
+  const candidateNames = enumerateAssetBindingCandidates(env);
+  const triedBindings = [];
+  const triedBindingWithFetch = [];
+  for (const name of candidateNames) {
+    let binding;
+    try { binding = env[name]; } catch (_) { binding = undefined; }
+    if (!binding || typeof binding.fetch !== "function") continue;
+    triedBindingWithFetch.push(name);
+    const up = name.toUpperCase();
+    const looksLikeAssets = /ASSET|STATIC|SITE|MANIFEST/.test(up);
+    triedBindings.push(name + (looksLikeAssets ? "" : "?"));
+    const candidates = looksLikeAssets
+      ? [
+          () => binding.fetch(`/${cleanRel}`),
+          () => binding.fetch(cleanRel),
+          () => binding.fetch(new Request(`/${cleanRel}`)),
+          () => binding.fetch(new Request(cleanRel)),
+        ]
+      : [
+          () => binding.fetch(`/${cleanRel}`),
+          () => binding.fetch(cleanRel),
+        ];
+    for (const fn of candidates) {
+      try {
+        const r = await fn();
+        if (r && r.ok) return new Uint8Array(await r.arrayBuffer());
+      } catch (_) { /* 继续试下一个 */ }
+    }
+  }
+
+  if (!allowHttpFallback) {
+    const triedMsg = triedBindings.length ? ` (tried bindings: ${triedBindings.join(",")})` : " (no fetch-capable env bindings)";
+    throw new Error(`Assets binding 未找到${triedMsg}，已跳过 HTTP fallback 防递归`);
+  }
+
+  // 优先级 3：HTTP fetch 自身域名路径（兼容本地 dev / 旧部署）
+  // 加 __assets_direct=1，若被 Worker 再次接收直接回 410 断链，避免递归
+  try {
+    const u = new URL(relPath, baseUrl);
+    u.searchParams.set("__assets_direct", "1");
+    const abs = u.href;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    let resp;
+    try {
+      resp = await fetch(abs, {
+        signal: ctrl.signal,
+        redirect: "manual",
+        cf: { cacheTtl: 3600, cacheEverything: true },
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (resp.status >= 300 && resp.status < 400) {
+      const loc = resp.headers.get("location") || "";
+      throw new Error(`asset ${abs} -> redirect ${resp.status} ${loc}`);
+    }
     if (!resp.ok) throw new Error(`asset ${abs} -> ${resp.status}`);
     return new Uint8Array(await resp.arrayBuffer());
   } catch (err) {
-    if (env && env.__ASSETS) {
-      try {
-        const r = await env.__ASSETS.fetch(new Request(relPath));
-        if (r.ok) return new Uint8Array(await r.arrayBuffer());
-      } catch (_) {}
-    }
+    const triedMsg = triedBindings.length ? ` (tried bindings: ${triedBindings.join(",")}, fetchBindings: ${triedBindingWithFetch.join(",")})` : triedBindingWithFetch.length ? ` (fetchBindings: ${triedBindingWithFetch.join(",")})` : " (no fetch-capable env bindings)";
+    err.message = (err && err.message ? err.message : String(err)) + triedMsg;
     throw err;
   }
 }

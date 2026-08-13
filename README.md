@@ -16,7 +16,7 @@
 ## 签名档效果
 
 <p align="center">
-  <img src="./example.png" alt="IP 签名档预览" width="534" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15);">
+  <img src="./example.jpeg" alt="IP 签名档预览" width="534" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15);">
 </p>
 
 <p align="center">

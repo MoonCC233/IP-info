@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "assets:gen": "node scripts/generate_modules.js",
+    "predev": "npm run assets:gen",
+    "predeploy": "npm run assets:gen",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typegen": "wrangler types"
