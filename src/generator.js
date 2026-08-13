@@ -127,24 +127,41 @@ export function generateSVG(info, queryText = "") {
   const TEXT_X = 20;
   const FONT_SIZE = 17;
   const FONT_SIZE_SMALL = 15;
+  // 每个中文字符≈1em宽，英数≈0.6em；SVG viewer宽度下近似估算线长，尽量贴近文本
+  function underlineWidth(str, fontSize) {
+    let w = 0;
+    for (const ch of str) {
+      w += /[\u4e00-\u9fff\uff00-\uffef\u3000-\u303f]/.test(ch) ? fontSize : fontSize * 0.6;
+    }
+    return Math.round(w + fontSize * 0.4);
+  }
 
   const mascotX = 300;
   const mascotY = -4;
   const mascotW = 230;
   const mascotH = 260;
 
-  // 使用 <text> 替代 <foreignObject>，确保在 <img> 上下文中也能渲染
-  const textEls = textLines.map((line) => {
+  const textEls = [];
+  textLines.forEach((line) => {
     const fs = line.small ? FONT_SIZE_SMALL : FONT_SIZE;
     const color = line.small ? "#6b4a35" : "#5a3825";
-    return `<text x="${TEXT_X}" y="${line.y}" font-family="'Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC',sans-serif" font-size="${fs}" font-weight="bold" fill="${color}" text-decoration="underline">${escapeXml(line.text)}</text>`;
+    const lineH = Math.max(1, Math.round(fs / 12));
+    const lineY = line.y + Math.round(fs / 6) + 3;
+    const lineW = underlineWidth(line.text, fs);
+    textEls.push(
+      `<text x="${TEXT_X}" y="${line.y}" font-family="msyh,'Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC',sans-serif" font-size="${fs}" font-weight="700" fill="${color}">${escapeXml(line.text)}</text>`
+    );
+    textEls.push(
+      `<line x1="${TEXT_X}" y1="${lineY}" x2="${TEXT_X + lineW}" y2="${lineY}" stroke="${color}" stroke-width="${lineH}" stroke-linecap="round" opacity="0.85"/>`
+    );
   });
 
   const fontFace = base
-    ? `<style type="text/css">@font-face{font-family:'msyh';src:url('${base}/msyh.ttf') format('truetype');}</style>`
+    ? `<style>@font-face{font-family:'msyh';src:url('${base}/msyh.ttf') format('truetype');font-display:swap;}</style>`
     : "";
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" shape-rendering="geometricPrecision" text-rendering="optimizeLegibility">
+  <title>IP 签名档</title>
   <defs>
     ${fontFace}
     <clipPath id="cardClip">
