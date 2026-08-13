@@ -3,6 +3,26 @@ import { getWeather } from "./weather.js";
 
 const WEEK_MAP = ["日", "一", "二", "三", "四", "五", "六"];
 
+function isLocalOrPrivateIp(ip) {
+  if (!ip) return false;
+  const ipStr = ip.trim().toLowerCase();
+  // IPv6 回环 / ULA / 链路本地
+  if (ipStr === "::1" || ipStr === "0:0:0:0:0:0:0:1") return true;
+  if (ipStr.startsWith("fc") || ipStr.startsWith("fd")) return true;
+  if (ipStr.startsWith("fe80:")) return true;
+  // IPv4 分段匹配
+  const v4Match = ipStr.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/\d{1,2})?$/);
+  if (!v4Match) return false;
+  const a = Number(v4Match[1]);
+  const b = Number(v4Match[2]);
+  if (a === 127) return true;
+  if (a === 10) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 169 && b === 254) return true;
+  return false;
+}
+
 async function ipGeoLookup(ip) {
   try {
     const res = await fetch(`https://uapis.cn/api/v1/network/ipinfo?ip=${encodeURIComponent(ip)}`, {
@@ -36,24 +56,35 @@ export async function generateInfo(request) {
   const ua = request.headers.get("user-agent") || "";
   const { os, browser } = parseUA(ua);
 
-  const cf = request.cf || {};
-
-  // 优先使用 ip-api.com 查询地理位置（中文返回，更准确）
-  const geo = await ipGeoLookup(ip);
-  let country = geo?.country || cf.country || "";
-  let region = geo?.region || cf.region || cf.regionCode || "";
-  let city = geo?.city || cf.city || "";
-  let latitude = geo?.latitude ?? cf.latitude;
-  let longitude = geo?.longitude ?? cf.longitude;
-
-  const locationParts = [country, region, city].filter(Boolean);
-  const location = locationParts.length > 0 ? locationParts.join("-") : "未知地区";
-
   const now = new Date();
   const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
   const weekStr = `星期${WEEK_MAP[now.getDay()]}`;
 
-  const weather = await getWeather(latitude, longitude);
+  let country = "";
+  let region = "";
+  let city = "";
+  let latitude = undefined;
+  let longitude = undefined;
+  let location = "未知地区";
+  let weather = null;
+
+  if (isLocalOrPrivateIp(ip)) {
+    location = "本地地址";
+  } else {
+    const cf = request.cf || {};
+    const geo = await ipGeoLookup(ip);
+    country = geo?.country || cf.country || "";
+    region = geo?.region || cf.region || cf.regionCode || "";
+    city = geo?.city || cf.city || "";
+    latitude = geo?.latitude ?? cf.latitude;
+    longitude = geo?.longitude ?? cf.longitude;
+
+    const locationParts = [country, region, city].filter(Boolean);
+    if (locationParts.length > 0) {
+      location = locationParts.join("-");
+    }
+    weather = await getWeather(latitude, longitude);
+  }
 
   return {
     ip,
@@ -142,6 +173,17 @@ function escapeXml(text) {
 }
 
 export function generateHTML(info, svg) {
+  function codeBlock(raw) {
+    const htmlSafe = raw
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    const attrSafe = raw
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;");
+    return `<div class="code-block"><code>${htmlSafe}</code><button type="button" class="copy-btn" data-copy="${attrSafe}" title="复制代码">📋 复制</button></div>`;
+  }
+  const baseUrl = info.baseUrl || "";
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -154,19 +196,84 @@ export function generateHTML(info, svg) {
       font-family: 'msyh';
       src: url('/msyh.ttf') format('truetype');
     }
+    :root {
+      --bg-gradient-start: #667eea;
+      --bg-gradient-end: #764ba2;
+      --card-bg: #ffffff;
+      --card-shadow: rgba(0, 0, 0, 0.3);
+      --text-primary: #333333;
+      --text-secondary: #555555;
+      --text-muted: #666666;
+      --text-highlight: #e60012;
+      --info-bg: #f8f9fa;
+      --info-border: #e60012;
+      --divider: #eeeeee;
+      --usage-bg: #f0f4ff;
+      --code-bg: #2d2d2d;
+      --code-text: #f8f8f2;
+      --footer-text: #ffffff;
+    }
+    [data-theme="dark"] {
+      --bg-gradient-start: #1a1a2e;
+      --bg-gradient-end: #16213e;
+      --card-bg: #1f2937;
+      --card-shadow: rgba(0, 0, 0, 0.5);
+      --text-primary: #e5e7eb;
+      --text-secondary: #cbd5e1;
+      --text-muted: #9ca3af;
+      --text-highlight: #ff6b6b;
+      --info-bg: #374151;
+      --info-border: #ff6b6b;
+      --divider: #374151;
+      --usage-bg: #1e3a5f;
+      --code-bg: #111827;
+      --code-text: #e5e7eb;
+      --footer-text: #e5e7eb;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: 'msyh', "Microsoft YaHei", sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 20px;
+      transition: background 0.3s ease;
     }
     .container {
       max-width: 640px;
       width: 100%;
+      position: relative;
+    }
+    .theme-toggle {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(10px);
+      color: white;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      z-index: 10;
+    }
+    .theme-toggle:hover {
+      background: rgba(255, 255, 255, 0.35);
+      transform: scale(1.08);
+    }
+    [data-theme="dark"] .theme-toggle {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    [data-theme="dark"] .theme-toggle:hover {
+      background: rgba(255, 255, 255, 0.2);
     }
     .header {
       text-align: center;
@@ -183,10 +290,11 @@ export function generateHTML(info, svg) {
       opacity: 0.85;
     }
     .card {
-      background: white;
+      background: var(--card-bg);
       border-radius: 16px;
       padding: 20px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 20px 60px var(--card-shadow);
+      transition: background 0.3s ease, box-shadow 0.3s ease;
     }
     .info-list {
       list-style: none;
@@ -198,36 +306,42 @@ export function generateHTML(info, svg) {
       align-items: flex-start;
       gap: 12px;
       padding: 12px 16px;
-      background: #f8f9fa;
+      background: var(--info-bg);
       border-radius: 10px;
-      border-left: 4px solid #e60012;
+      border-left: 4px solid var(--info-border);
+      transition: background 0.3s ease, border-color 0.3s ease;
     }
     .info-label {
       font-weight: 700;
-      color: #666;
+      color: var(--text-muted);
       min-width: 90px;
       font-size: 13px;
+      transition: color 0.3s ease;
     }
     .info-value {
-      color: #333;
+      color: var(--text-primary);
       font-size: 14px;
       word-break: break-all;
       flex: 1;
+      transition: color 0.3s ease;
     }
     .info-value.highlight {
-      color: #e60012;
+      color: var(--text-highlight);
       font-weight: 600;
+      transition: color 0.3s ease;
     }
     .preview {
       margin-top: 20px;
       padding-top: 20px;
-      border-top: 1px solid #eee;
+      border-top: 1px solid var(--divider);
+      transition: border-color 0.3s ease;
     }
     .preview-title {
       font-size: 14px;
-      color: #666;
+      color: var(--text-muted);
       margin-bottom: 12px;
       text-align: center;
+      transition: color 0.3s ease;
     }
     .preview svg {
       display: block;
@@ -238,38 +352,92 @@ export function generateHTML(info, svg) {
     .usage {
       margin-top: 20px;
       padding: 16px;
-      background: #f0f4ff;
+      background: var(--usage-bg);
       border-radius: 10px;
       font-size: 12px;
-      color: #555;
+      color: var(--text-secondary);
+      transition: background 0.3s ease, color 0.3s ease;
     }
     .usage h3 {
-      color: #333;
+      color: var(--text-primary);
       margin-bottom: 8px;
       font-size: 14px;
+      transition: color 0.3s ease;
+    }
+    .usage h4 {
+      color: var(--text-secondary);
+      margin: 14px 0 6px 0;
+      font-size: 13px;
+      font-weight: 600;
+      transition: color 0.3s ease;
+    }
+    .usage p {
+      transition: color 0.3s ease;
     }
     .usage code {
       display: block;
-      background: #2d2d2d;
-      color: #f8f8f2;
+      background: var(--code-bg);
+      color: var(--code-text);
       padding: 10px 14px;
       border-radius: 6px;
       font-family: "Consolas", "Monaco", monospace;
       font-size: 12px;
-      margin: 8px 0;
+      margin: 0;
       word-break: break-all;
+      transition: background 0.3s ease, color 0.3s ease;
+      flex: 1;
+      white-space: pre-wrap;
+    }
+    .code-block {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      margin: 8px 0;
+      background: var(--code-bg);
+      border-radius: 6px;
+      overflow: hidden;
+      transition: background 0.3s ease;
+    }
+    .copy-btn {
+      flex-shrink: 0;
+      min-width: 56px;
+      border: none;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--code-text);
+      font-family: 'msyh', "Microsoft YaHei", sans-serif;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 0 12px;
+      transition: background 0.2s ease, color 0.2s ease;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+    .copy-btn:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .copy-btn.copied {
+      background: rgba(72, 187, 120, 0.35);
+      color: #86efac;
+    }
+    [data-theme="dark"] .copy-btn.copied {
+      background: rgba(72, 187, 120, 0.25);
     }
     .footer {
       text-align: center;
-      color: white;
+      color: var(--footer-text);
       margin-top: 20px;
       font-size: 12px;
       opacity: 0.7;
+      transition: color 0.3s ease;
     }
   </style>
 </head>
 <body>
   <div class="container">
+    <button id="themeToggle" class="theme-toggle" aria-label="切换主题" title="切换主题">🌙</button>
     <div class="header">
       <h1>🌐 您的网络信息</h1>
       <p>基于 Cloudflare Workers 的 IP 签名档服务</p>
@@ -311,14 +479,138 @@ export function generateHTML(info, svg) {
       </div>
       <div class="usage">
         <h3>📝 使用方法</h3>
-        <p>在论坛或支持 HTML 的平台中，使用以下代码引用您的签名档：</p>
-        <code>&lt;img src="${info.baseUrl || ""}/svg" alt="IP签名档" /&gt;</code>
-        <p>带有文字参数（可选）：</p>
-        <code>&lt;img src="${info.baseUrl || ""}/svg?s=自定义文字" alt="IP签名档" /&gt;</code>
+        <h4>🌐 HTML（网站 / 博客 / 支持 HTML 的论坛）</h4>
+        <p>基础签名档：</p>
+        ${codeBlock(`<img src="${baseUrl}/svg" alt="IP签名档" />`)}
+        <p>带自定义文字（可选）：</p>
+        ${codeBlock(`<img src="${baseUrl}/svg?s=自定义文字" alt="IP签名档" />`)}
+
+        <h4>📋 Markdown（GitHub / README / 支持 Markdown 的平台）</h4>
+        <p>基础签名档：</p>
+        ${codeBlock(`![IP签名档](${baseUrl}/svg)`)}
+        <p>带自定义文字（可选）：</p>
+        ${codeBlock(`![IP签名档](${baseUrl}/svg?s=自定义文字)`)}
+
+        <h4>🏷️ BBCode / UBB（传统论坛如 Discuz!、phpBB 等）</h4>
+        <p>基础签名档：</p>
+        ${codeBlock(`[img]${baseUrl}/svg[/img]`)}
+        <p>带自定义文字（可选）：</p>
+        ${codeBlock(`[img]${baseUrl}/svg?s=自定义文字[/img]`)}
+
+        <h4>🔗 直接链接（复制粘贴即可）</h4>
+        <p>基础签名档：</p>
+        ${codeBlock(`${baseUrl}/svg`)}
+        <p>带自定义文字（可选）：</p>
+        ${codeBlock(`${baseUrl}/svg?s=自定义文字`)}
       </div>
     </div>
     <p class="footer">Powered by Cloudflare Workers ☁️</p>
   </div>
+  <script>
+    (function () {
+      var STORAGE_KEY = 'ip-info-theme';
+      var btn = document.getElementById('themeToggle');
+      var systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+      function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        if (btn) {
+          btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+          btn.setAttribute('aria-label', theme === 'dark' ? '切换至亮色模式' : '切换至暗色模式');
+          btn.setAttribute('title', theme === 'dark' ? '切换至亮色模式' : '切换至暗色模式');
+        }
+      }
+
+      function getInitialTheme() {
+        var saved = null;
+        try { saved = localStorage.getItem(STORAGE_KEY); } catch (_) {}
+        if (saved === 'light' || saved === 'dark') return saved;
+        return systemDark.matches ? 'dark' : 'light';
+      }
+
+      var currentTheme = getInitialTheme();
+      applyTheme(currentTheme);
+
+      if (btn) {
+        btn.addEventListener('click', function () {
+          currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          applyTheme(currentTheme);
+          try { localStorage.setItem(STORAGE_KEY, currentTheme); } catch (_) {}
+        });
+      }
+
+      if (typeof systemDark.addEventListener === 'function') {
+        systemDark.addEventListener('change', function (e) {
+          var saved = null;
+          try { saved = localStorage.getItem(STORAGE_KEY); } catch (_) {}
+          if (saved !== 'light' && saved !== 'dark') {
+            currentTheme = e.matches ? 'dark' : 'light';
+            applyTheme(currentTheme);
+          }
+        });
+      } else if (typeof systemDark.addListener === 'function') {
+        systemDark.addListener(function (e) {
+          var saved = null;
+          try { saved = localStorage.getItem(STORAGE_KEY); } catch (_) {}
+          if (saved !== 'light' && saved !== 'dark') {
+            currentTheme = e.matches ? 'dark' : 'light';
+            applyTheme(currentTheme);
+          }
+        });
+      }
+    })();
+
+    (function () {
+      function fallbackCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+        document.body.removeChild(ta);
+        return ok;
+      }
+      function copyText(text, btn) {
+        var done = false;
+        var onDone = function (ok) {
+          if (done) return;
+          done = true;
+          if (ok) {
+            var original = btn.innerHTML;
+            btn.classList.add('copied');
+            btn.innerHTML = '✓ 已复制';
+            setTimeout(function () {
+              btn.classList.remove('copied');
+              btn.innerHTML = original;
+            }, 1500);
+          } else {
+            btn.title = '复制失败，请手动选择复制';
+          }
+        };
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          try {
+            Promise.resolve(navigator.clipboard.writeText(text))
+              .then(function () { onDone(true); })
+              .catch(function () { onDone(fallbackCopy(text)); });
+            return;
+          } catch (_) { /* fallthrough */ }
+        }
+        onDone(fallbackCopy(text));
+      }
+      document.addEventListener('click', function (e) {
+        var btn = e.target.closest && e.target.closest('.copy-btn');
+        if (!btn) return;
+        e.preventDefault();
+        var text = btn.getAttribute('data-copy') || '';
+        copyText(text, btn);
+      });
+    })();
+  </script>
 </body>
 </html>`;
 }

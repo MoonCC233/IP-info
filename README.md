@@ -107,12 +107,44 @@ npm run deploy
 
 ### 在论坛 / 博客中引用签名档
 
+#### 🌐 HTML（网站 / 博客 / 支持 HTML 的论坛）
+
 ```html
 <!-- 基础签名档 -->
 <img src="https://ip-info.<你的子域>.workers.dev/svg" alt="IP签名档" />
 
 <!-- 带自定义文字 -->
 <img src="https://ip-info.<你的子域>.workers.dev/svg?s=欢迎光临" alt="IP签名档" />
+```
+
+#### 📋 Markdown（GitHub / README / 支持 Markdown 的平台）
+
+```markdown
+<!-- 基础签名档 -->
+![IP签名档](https://ip-info.<你的子域>.workers.dev/svg)
+
+<!-- 带自定义文字 -->
+![IP签名档](https://ip-info.<你的子域>.workers.dev/svg?s=欢迎光临)
+```
+
+#### 🏷️ BBCode / UBB（传统论坛如 Discuz!、phpBB 等）
+
+```bbcode
+<!-- 基础签名档 -->
+[img]https://ip-info.<你的子域>.workers.dev/svg[/img]
+
+<!-- 带自定义文字 -->
+[img]https://ip-info.<你的子域>.workers.dev/svg?s=欢迎光临[/img]
+```
+
+#### 🔗 直接链接（复制粘贴即可）
+
+```
+基础签名档：
+https://ip-info.<你的子域>.workers.dev/svg
+
+带自定义文字：
+https://ip-info.<你的子域>.workers.dev/svg?s=欢迎光临
 ```
 
 ### JSON API 示例
