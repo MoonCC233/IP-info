@@ -8,12 +8,16 @@ const TEXT_X = 20;
 const COLOR_NORMAL = "#5a3825";
 const COLOR_SMALL = "#6b4a35";
 
-const CanvasClass = typeof Canvas !== "undefined" ? Canvas : (typeof globalThis !== "undefined" && globalThis.Canvas) || null;
-const ImageClass = typeof Image !== "undefined" ? Image : (typeof globalThis !== "undefined" && globalThis.Image) || null;
-const FontFaceClass = typeof FontFace !== "undefined" ? FontFace : (typeof globalThis !== "undefined" && globalThis.FontFace) || null;
+let _classes = null;
 
-if (!CanvasClass) {
-  throw new Error("Canvas API not available in this runtime");
+function getClasses() {
+  if (_classes) return _classes;
+  _classes = {
+    CanvasClass: typeof Canvas !== "undefined" ? Canvas : (typeof globalThis !== "undefined" && globalThis.Canvas) || null,
+    ImageClass: typeof Image !== "undefined" ? Image : (typeof globalThis !== "undefined" && globalThis.Image) || null,
+    FontFaceClass: typeof FontFace !== "undefined" ? FontFace : (typeof globalThis !== "undefined" && globalThis.FontFace) || null,
+  };
+  return _classes;
 }
 
 let imagesCache = null;
@@ -29,6 +33,7 @@ function bytesToDataURI(bytes, mime) {
 }
 
 function createImage(bytes, mime) {
+  const { ImageClass } = getClasses();
   const img = new ImageClass();
   img.src = bytesToDataURI(bytes, mime);
   return img;
@@ -78,6 +83,7 @@ async function ensureFont(ctx, fontBuf) {
   if (fontReadyPromise) return fontReadyPromise;
   fontReadyPromise = (async () => {
     try {
+      const { FontFaceClass } = getClasses();
       if (FontFaceClass) {
         const fontFace = new FontFaceClass("msyh", fontBuf);
         await fontFace.load();
@@ -174,6 +180,11 @@ function drawAll(ctx, info, queryText, images) {
 }
 
 export async function renderBitmap(info, queryText, env, format) {
+  const { CanvasClass } = getClasses();
+  if (!CanvasClass) {
+    throw new Error("Canvas API not available in this runtime");
+  }
+
   const canvas = new CanvasClass(W, H);
   const ctx = canvas.getContext("2d");
 
