@@ -36,11 +36,12 @@ for (const name of readdirSync(SRC)) {
   );
 }
 
-// 生成 manifest.js：列出所有嵌入的资源路径，并为每个资源动态 import
-// 注意：不能直接 import 字符串路径，必须写静态 import 语句让 bundler/rules 命中
+// 生成 manifest.js：列出所有嵌入的资源路径，并为每个资源生成静态 import
+// 显式加 "?data" 查询后缀，避免不同平台（Windows vs Linux CI）下 wrangler bundler
+// 对 glob 规则匹配差异导致的 "No loader is configured for ..." 错误。
 const toIdent = (n) =>
   "A_" + n.replace(/[^A-Za-z0-9]/g, "_").replace(/^_+/, "").toUpperCase();
-const imports = copied.map((c) => `import ${toIdent(c.name)} from "./${c.name}";`).join("\n");
+const imports = copied.map((c) => `import ${toIdent(c.name)} from "./${c.name}?data";`).join("\n");
 const map = copied.map((c) => `  "/${c.name}": ${toIdent(c.name)},`).join("\n");
 const manifest = `// 此文件由 scripts/generate_modules.js 自动生成，请勿手动修改。
 // src/_assets/*.{ttf,jpg,png,ico} 通过 wrangler module rules 声明为 Data 类型，

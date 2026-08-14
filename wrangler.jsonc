@@ -7,6 +7,26 @@
   "assets": {
     "directory": "./public"
   },
+  "rules": [
+    {
+      "type": "Data",
+      "globs": [
+        "**/*.ttf",
+        "**/*.jpg",
+        "**/*.jpeg",
+        "**/*.png",
+        "**/*.ico",
+        "**/*.ttf?data",
+        "**/*.jpg?data",
+        "**/*.jpeg?data",
+        "**/*.png?data",
+        "**/*.ico?data",
+        "**/*?data",
+        "**/*?arraybuffer"
+      ],
+      "fallthrough": true
+    }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 0.1
