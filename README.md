@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  <img src="https://ip-info.mooncc.cn/jpg?s=欢迎使用IP-info项目！" alt="动态IP签名档" width="534" />
+  <img src="https://ip-info.mooncc.cn/jpg" alt="动态IP签名档" width="534" />
 </p>
 
 部署后将下方链接替换为你的域名，即可在 GitHub README 中展示动态签名档（推荐使用 `/jpg`，兼容性最好）：
