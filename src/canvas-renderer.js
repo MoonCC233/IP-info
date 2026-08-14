@@ -8,18 +8,6 @@ const TEXT_X = 20;
 const COLOR_NORMAL = "#5a3825";
 const COLOR_SMALL = "#6b4a35";
 
-let _classes = null;
-
-function getClasses() {
-  if (_classes) return _classes;
-  _classes = {
-    CanvasClass: typeof Canvas !== "undefined" ? Canvas : (typeof globalThis !== "undefined" && globalThis.Canvas) || null,
-    ImageClass: typeof Image !== "undefined" ? Image : (typeof globalThis !== "undefined" && globalThis.Image) || null,
-    FontFaceClass: typeof FontFace !== "undefined" ? FontFace : (typeof globalThis !== "undefined" && globalThis.FontFace) || null,
-  };
-  return _classes;
-}
-
 let imagesCache = null;
 let fontBuffer = null;
 
@@ -32,9 +20,15 @@ function bytesToDataURI(bytes, mime) {
   return `data:${mime};base64,${btoa(binary)}`;
 }
 
-function createImage(bytes, mime) {
-  const { ImageClass } = getClasses();
-  const img = new ImageClass();
+function createImage(bytes, mime, env) {
+  let img;
+  if (typeof Image !== "undefined") {
+    img = new Image();
+  } else if (env && env.CANVAS && typeof env.CANVAS.newImage === "function") {
+    img = env.CANVAS.newImage();
+  } else {
+    throw new Error("Image API not available: neither Image global nor env.CANVAS.newImage found");
+  }
   img.src = bytesToDataURI(bytes, mime);
   return img;
 }
@@ -48,8 +42,8 @@ async function loadImages(env) {
   ]);
 
   imagesCache = {
-    bg: createImage(bg, "image/jpeg"),
-    kbn: createImage(kbn, "image/png"),
+    bg: createImage(bg, "image/jpeg", env),
+    kbn: createImage(kbn, "image/png", env),
   };
   return imagesCache;
 }
@@ -79,13 +73,17 @@ async function loadAsset(relPath, env) {
 }
 
 let fontReadyPromise = null;
-async function ensureFont(ctx, fontBuf) {
+async function ensureFont(ctx, fontBuf, env) {
   if (fontReadyPromise) return fontReadyPromise;
   fontReadyPromise = (async () => {
     try {
-      const { FontFaceClass } = getClasses();
-      if (FontFaceClass) {
-        const fontFace = new FontFaceClass("msyh", fontBuf);
+      let fontFace = null;
+      if (typeof FontFace !== "undefined") {
+        fontFace = new FontFace("msyh", fontBuf);
+      } else if (env && env.CANVAS && typeof env.CANVAS.newFontFace === "function") {
+        fontFace = env.CANVAS.newFontFace("msyh", fontBuf);
+      }
+      if (fontFace) {
         await fontFace.load();
       }
       ctx.font = "700 17px msyh, 'Microsoft YaHei', 'PingFang SC', sans-serif";
@@ -179,13 +177,18 @@ function drawAll(ctx, info, queryText, images) {
   }
 }
 
-export async function renderBitmap(info, queryText, env, format) {
-  const { CanvasClass } = getClasses();
-  if (!CanvasClass) {
-    throw new Error("Canvas API not available in this runtime");
+function createCanvasInstance(env) {
+  if (env && env.CANVAS && typeof env.CANVAS.newCanvas === "function") {
+    return env.CANVAS.newCanvas(W, H);
   }
+  if (typeof Canvas !== "undefined") {
+    return new Canvas(W, H);
+  }
+  throw new Error("Canvas API not available: neither env.CANVAS binding nor Canvas global found");
+}
 
-  const canvas = new CanvasClass(W, H);
+export async function renderBitmap(info, queryText, env, format) {
+  const canvas = createCanvasInstance(env);
   const ctx = canvas.getContext("2d");
 
   const [images, fontBuf] = await Promise.all([
@@ -193,7 +196,7 @@ export async function renderBitmap(info, queryText, env, format) {
     loadFont(env),
   ]);
 
-  await ensureFont(ctx, fontBuf);
+  await ensureFont(ctx, fontBuf, env);
 
   drawAll(ctx, info, queryText, images);
 
