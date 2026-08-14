@@ -1,5 +1,6 @@
 import { generateInfo, generateSVG, generateHTML } from "./generator.js";
-import { svgToJpeg, svgToPng, buildSelfContainedSVG, prepareAssets, fetchAssetBytesPublic } from "./image.js";
+import { fetchAssetBytesPublic } from "./image.js";
+import { renderBitmap } from "./canvas-renderer.js";
 
 const CACHE_TTL = 60;
 const IMG_CACHE_TTL = 120;
@@ -126,30 +127,13 @@ async function handleSVG(request, env, ctx) {
 
 async function handlePreview(request, env, ctx) {
   const url = new URL(request.url);
-  const origin = url.origin;
   const info = await generateInfo(request);
-  info.baseUrl = origin;
   const queryText = decodeURIComponent(url.searchParams.get("s") || "");
-  const scale = url.searchParams.get("scale") === "2" ? 2 : 1;
-
-  const [assets, svg] = await Promise.all([
-    prepareAssets(origin, env),
-    Promise.resolve(generateSVG(info, queryText)),
-  ]);
-  const standaloneSVG = buildSelfContainedSVG(svg, origin, assets);
-
-  // 默认输出 JPEG（体积小、兼容性好），明确请求 .png 时输出 PNG
   const isPng = /\.png$|\/png$/.test(url.pathname);
-  let body;
-  let contentType;
-  if (isPng) {
-    body = await svgToPng(standaloneSVG, { scale, fontBuffer: assets.fontBuffer });
-    contentType = "image/png";
-  } else {
-    body = await svgToJpeg(standaloneSVG, { scale, quality: 92, fontBuffer: assets.fontBuffer });
-    contentType = "image/jpeg";
-  }
 
+  const body = await renderBitmap(info, queryText, env, isPng ? "png" : "jpg");
+
+  const contentType = isPng ? "image/png" : "image/jpeg";
   const headers = {
     "Content-Type": contentType,
     "Cache-Control": `public, max-age=${IMG_CACHE_TTL}, s-maxage=${IMG_CACHE_TTL}`,

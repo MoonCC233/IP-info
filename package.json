@@ -14,9 +14,5 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260801.1",
     "wrangler": "^4.119.0"
-  },
-  "dependencies": {
-    "@resvg/resvg-wasm": "^2.6.2",
-    "jpeg-js": "^0.4.4"
   }
 }
