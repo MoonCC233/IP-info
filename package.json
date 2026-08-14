@@ -5,14 +5,16 @@
   "type": "module",
   "scripts": {
     "assets:gen": "node scripts/generate_modules.js",
-    "predev": "npm run assets:gen",
-    "predeploy": "npm run assets:gen",
+    "prerender": "node scripts/prerender.js",
+    "predev": "npm run assets:gen && npm run prerender",
+    "predeploy": "npm run assets:gen && npm run prerender",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typegen": "wrangler types"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260801.1",
+    "@napi-rs/canvas": "^0.1.69",
     "wrangler": "^4.119.0"
   }
 }

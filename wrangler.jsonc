@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ip-info",
+  "name": "IP-info",
   "main": "src/index.js",
   "compatibility_date": "2026-08-06",
   "compatibility_flags": ["nodejs_compat"],
@@ -28,9 +28,6 @@
       "fallthrough": true
     }
   ],
-  "canvas": {
-    "binding": "CANVAS"
-  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 0.1

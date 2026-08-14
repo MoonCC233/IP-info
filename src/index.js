@@ -1,6 +1,6 @@
 import { generateInfo, generateSVG, generateHTML } from "./generator.js";
 import { fetchAssetBytesPublic } from "./image.js";
-import { renderBitmap } from "./canvas-renderer.js";
+import { renderBitmap } from "./bitmap-renderer.js";
 
 const CACHE_TTL = 60;
 const IMG_CACHE_TTL = 120;
@@ -129,11 +129,12 @@ async function handlePreview(request, env, ctx) {
   const url = new URL(request.url);
   const info = await generateInfo(request);
   const queryText = decodeURIComponent(url.searchParams.get("s") || "");
-  const isPng = /\.png$|\/png$/.test(url.pathname);
 
-  const body = await renderBitmap(info, queryText, env, isPng ? "png" : "jpg");
+  // 纯 JS 渲染仅产出 PNG（JPEG 编码无法在 10ms CPU 内完成），
+  // /jpg 与 /png 均返回 PNG；camo 与 <img> 按 Content-Type 渲染，README 兼容。
+  const body = await renderBitmap(info, queryText, env, "png");
 
-  const contentType = isPng ? "image/png" : "image/jpeg";
+  const contentType = "image/png";
   const headers = {
     "Content-Type": contentType,
     "Cache-Control": `public, max-age=${IMG_CACHE_TTL}, s-maxage=${IMG_CACHE_TTL}`,
