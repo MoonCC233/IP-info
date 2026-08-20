@@ -13,6 +13,66 @@ const MIME_BY_EXT = {
   ".ico": "image/x-icon",
 };
 
+// 代理/机器人特征 UA（GitHub Camo、curl、Python 爬虫、搜索引擎等）
+const PROXY_UA_PATTERNS = [
+  "camo",
+  "github-hookshot",
+  "curl/",
+  "wget/",
+  "python-requests",
+  "go-http-client",
+  "node-fetch",
+  "axios",
+  "postmanruntime",
+  "googlebot",
+  "bingbot",
+  "duckduckbot",
+  "yandexbot",
+  "baiduspider",
+  "sogou",
+  "mj12bot",
+  "ahrefsbot",
+  "semrushbot",
+  "headlesschrome",
+  "phantomjs",
+  "java/",
+  "apache-httpclient",
+  "libwww-perl",
+  "scrapy",
+];
+
+function isProxyRequest(request) {
+  const ua = (request.headers.get("user-agent") || "").toLowerCase();
+  const referer = (request.headers.get("referer") || request.headers.get("referrer") || "").toLowerCase();
+  
+  if (!ua && !referer) return false;
+  
+  for (const p of PROXY_UA_PATTERNS) {
+    if (ua.includes(p)) return true;
+  }
+  if (referer.includes("github.com")) return true;
+  return false;
+}
+
+function buildProxyNoticeSVG(baseUrl) {
+  const url = baseUrl || "https://ip-info.mooncc.cn";
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="534" height="256" viewBox="0 0 534 256">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fef3c7"/>
+      <stop offset="100%" stop-color="#fde68a"/>
+    </linearGradient>
+  </defs>
+  <rect width="534" height="256" fill="url(#g)"/>
+  <g fill="#92400e" font-family="'Microsoft YaHei', sans-serif" font-weight="700" text-rendering="optimizeLegibility">
+    <text x="267" y="80" font-size="22" text-anchor="middle">🔒 隐私保护提示</text>
+    <text x="267" y="130" font-size="14" text-anchor="middle" fill="#78350f">该图片由第三方代理转发，为保护您的隐私，</text>
+    <text x="267" y="155" font-size="14" text-anchor="middle" fill="#78350f">已隐藏真实 IP 和浏览器信息。</text>
+    <text x="267" y="210" font-size="13" text-anchor="middle" fill="#b45309">👉 点击访问 <tspan fill="#c2410c">${url}</tspan> 查看您的真实信息</text>
+  </g>
+</svg>`;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -102,8 +162,24 @@ async function handleHome(request, env, ctx) {
 }
 
 async function handleSVG(request, env, ctx) {
+  const baseUrl = new URL(request.url).origin;
+  if (isProxyRequest(request)) {
+    const svg = buildProxyNoticeSVG(baseUrl);
+    const headers = {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": `public, max-age=${IMG_CACHE_TTL}, s-maxage=${IMG_CACHE_TTL}`,
+      "Access-Control-Allow-Origin": "*",
+      "X-Proxy-Notice": "1",
+    };
+    const etag = `W/"${hashString(svg)}"`;
+    const ifNoneMatch = request.headers.get("if-none-match");
+    if (ifNoneMatch === etag) return new Response(null, { status: 304, headers: { etag, ...headers } });
+    headers["etag"] = etag;
+    return new Response(svg, { headers });
+  }
+
   const info = await generateInfo(request);
-  info.baseUrl = new URL(request.url).origin;
+  info.baseUrl = baseUrl;
 
   const queryText = decodeURIComponent(new URL(request.url).searchParams.get("s") || "");
   const svg = generateSVG(info, queryText);
@@ -127,6 +203,23 @@ async function handleSVG(request, env, ctx) {
 
 async function handlePreview(request, env, ctx) {
   const url = new URL(request.url);
+  const baseUrl = url.origin;
+
+  if (isProxyRequest(request)) {
+    const svg = buildProxyNoticeSVG(baseUrl);
+    const headers = {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": `public, max-age=${IMG_CACHE_TTL}, s-maxage=${IMG_CACHE_TTL}`,
+      "Access-Control-Allow-Origin": "*",
+      "X-Proxy-Notice": "1",
+    };
+    const etag = `W/"${hashString(svg)}"`;
+    const ifNoneMatch = request.headers.get("if-none-match");
+    if (ifNoneMatch === etag) return new Response(null, { status: 304, headers: { etag, ...headers } });
+    headers["etag"] = etag;
+    return new Response(svg, { headers });
+  }
+
   const info = await generateInfo(request);
   const queryText = decodeURIComponent(url.searchParams.get("s") || "");
 

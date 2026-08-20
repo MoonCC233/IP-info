@@ -1,6 +1,6 @@
 # IP 签名档 · Cloudflare Workers 版
 
-基于 Cloudflare Workers 的动态 IP 签名档服务，展示访问者的 IP 地址、地理位置、日期、天气、操作系统和浏览器信息。带有看板娘和温暖背景的精美 SVG 签名档，无需服务器，全球边缘网络加速，零运维。
+基于 Cloudflare Workers 的动态 IP 签名档服务，展示访问者的 IP 地址、地理位置、日期、天气、操作系统和浏览器信息。带有看板娘和温暖背景的精美签名档（SVG 矢量 + PNG 位图），无需服务器，全球边缘网络加速，零运维。
 
 ## 功能特性
 
@@ -11,6 +11,7 @@
 - **操作系统识别** — 支持 Windows / macOS / iOS / Android / Linux / HarmonyOS
 - **浏览器识别** — 支持 Chrome / Firefox / Safari / Edge / Opera / 微信 / QQ 等
 - **签名档图片** — 提供 SVG 矢量与 PNG 位图两种格式（534×256），带看板娘插画和动态长度下划线
+- **隐私保护** — 智能识别 GitHub Camo 等图片代理请求，代理访问时返回提示图而非泄露代理服务器信息
 - **JSON API** — 提供结构化数据接口，方便二次开发
 
 ## 签名档效果
@@ -20,24 +21,26 @@
 </p>
 
 <p align="center">
-  <em>静态预览图（上）· 已部署服务的动态签名档（下，实时变化，PNG 位图，兼容 GitHub camo 代理）</em>
+  <em>静态预览图（上）· 动态签名档示例（下）</em>
 </p>
 
 <p align="center">
   <img src="https://ip-info.mooncc.cn/jpg" alt="动态IP签名档" width="534" />
 </p>
 
-部署后将下方链接替换为你的域名，即可在 GitHub README 中展示动态签名档（推荐使用 `/jpg`，兼容性最好）：
+部署后将下方链接替换为你的域名，即可在 GitHub README 中展示签名档（推荐使用 `/jpg`，兼容性最好）：
 
 ```markdown
 ![IP签名档](https://ip-info.<你的子域>.workers.dev/jpg)
 ```
 
 > **说明**：
-> - 推荐用 `/jpg` 端点（输出 PNG 位图），GitHub camo 代理对位图兼容性最好，几乎不会渲染失败；`/png` 与其等价
-> - 如需纯矢量可缩放，可使用 `/svg` 端点，但 GitHub 或部分论坛可能会因 SVG 内的字体/图片引用导致渲染异常
+> - **关于 GitHub README 中的显示**：由于 GitHub 使用 Camo 代理机制，在 README 中嵌入的图片会被 GitHub 的代理服务器转发，导致无法获取访客的真实 IP 和浏览器信息。为保护隐私，服务检测到代理请求时会返回一张提示图（如上方所示），引导访客访问主页查看真实信息。
+> - 推荐用 `/jpg` 端点（输出 PNG 位图），对位图兼容性最好，几乎不会渲染失败；`/png` 与其等价
+> - 如需纯矢量可缩放，可使用 `/svg` 端点
 > - GitHub 通过 camo 代理缓存图片，首次加载或更新可能有数分钟延迟，可点击仓库 **Commit changes...** 触发重新渲染
 > - 每位访客看到的 IP / 地区 / 浏览器等信息会根据其自身网络环境动态变化
+> - 👉 **点击查看你的真实信息**：[https://ip-info.mooncc.cn](https://ip-info.mooncc.cn)
 
 签名档包含以下元素：
 - 📍 访问者地区信息
@@ -66,13 +69,14 @@ ip-info/
 │   ├── generate_modules.js   # 将小资源打包为 Data 模块
 │   └── prerender.js          # 预渲染背景 + 字形图集（@napi-rs/canvas）
 ├── src/
-│   ├── index.js              # Worker 入口，路由与请求处理
+│   ├── index.js              # Worker 入口，路由 + 代理检测 + 隐私保护
 │   ├── generator.js          # 信息采集与 SVG / HTML 生成
 │   ├── bitmap-renderer.js    # 纯 JS 位图渲染器（背景合成 + 字形 blit）
 │   ├── png-encoder.js        # 纯 JS PNG 编码器（CompressionStream）
 │   ├── image.js              # 静态资源加载（Data 模块 + ASSETS binding）
 │   ├── ua-parser.js          # User-Agent 解析（操作系统 + 浏览器）
-│   └── weather.js            # 天气获取（Open-Meteo API）
+│   ├── weather.js            # 天气获取（Open-Meteo API）
+│   └── _assets/              # 构建产物：小资源 Data 模块（gitignored）
 ├── wrangler.jsonc            # Wrangler 配置
 ├── package.json              # 项目依赖与脚本
 └── .gitignore
@@ -142,6 +146,8 @@ npm run deploy
 | `GET /svg`          | SVG 矢量签名档，可直接用 `<img>` 引用     |
 | `GET /jpg?s=自定义文字` | 带自定义文字的位图签名档                 |
 | `GET /svg?s=自定义文字` | 带自定义文字的矢量签名档                 |
+| `GET /preview.jpg`  | `/jpg` 旧兼容路径                  |
+| `GET /preview.png`  | `/png` 旧兼容路径                  |
 | `GET /api/info`     | JSON 接口，返回所有结构化数据            |
 | `GET /health`       | 健康检查                          |
 
@@ -220,14 +226,14 @@ curl https://ip-info.<你的子域>.workers.dev/api/info
   "city": "Dazhou",
   "os": "Windows 10/11",
   "browser": "Chrome(120.0.0.0)",
-  "dateStr": "2026年8月6日",
+  "dateStr": "2026年8月14日",
   "weekStr": "星期四",
   "weather": {
     "temperature": 32,
     "description": "晴",
     "text": "晴 32℃"
   },
-  "timestamp": "2026-08-06T08:41:54.970Z"
+  "timestamp": "2026-08-14T08:41:54.970Z"
 }
 ```
 
@@ -244,6 +250,18 @@ curl https://ip-info.<你的子域>.workers.dev/api/info
 | 配置        | Wrangler + `wrangler.jsonc`  |
 | 静态资源      | Workers Static Assets（字体 / 图片 / 预渲染位图）|
 | 自动部署      | GitHub Actions               |
+
+## 隐私保护机制
+
+当您在 GitHub README、论坛等第三方平台嵌入签名档时，这些平台通常会使用 **图片代理**（如 GitHub Camo）转发图片请求。这会导致 Worker 收到的请求来自代理服务器而非您本人的浏览器，从而显示错误的 IP 和浏览器信息。
+
+为保护您的隐私，服务实现了智能代理检测：
+
+1.  **检测逻辑**：Worker 检查请求的 `User-Agent` 和 `Referer` 头，识别常见的代理/机器人特征（如 `Camo`、`curl`、`python-requests`、`Googlebot` 等）。
+2.  **隐私保护**：检测到代理请求时，Worker 返回一张友好的提示图，内容为“🔒 该图片由第三方代理转发，已隐藏真实 IP 和浏览器信息。👉 点击访问主页查看真实信息”。
+3.  **正常请求不受影响**：直接访问 `/jpg`、`/png` 或 `/svg` 端点的真实用户，仍会看到完整的动态签名档。
+
+这种设计确保了在第三方平台嵌入签名档时不会泄露访客的真实网络信息，同时提供了清晰的引导，让感兴趣的用户可以点击链接查看自己的真实 IP 和浏览器详情。
 
 ## License
 
